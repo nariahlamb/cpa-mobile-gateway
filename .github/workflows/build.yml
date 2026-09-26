@@ -40,7 +40,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r26d
-          local-cache: true
+          local-cache: false
 
       - name: Clone CLIProxyAPI
         run: |
@@ -54,10 +54,12 @@ jobs:
       - name: Build android/arm64 (CGO + NDK, bionic DNS)
         working-directory: cpa-src
         run: |
-          TOOLCHAIN="${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64"
+          NDK="${{ steps.ndk.outputs.ndk-path }}"
+          TOOLCHAIN="$(cd "$NDK/toolchains/llvm/prebuilt/linux-x86_64" && pwd)"
           export CC="$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang"
           export CXX="$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang++"
-          echo "CC=$CC"; "$CC" --version | head -1
+          echo "NDK=$NDK"; echo "CC=$CC"; ls -l "$TOOLCHAIN/bin/clang" || true
+          "$CC" --version | head -1
           CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
             go build -trimpath -tags "netcgo" -ldflags "-s -w" \
             -o "$GITHUB_WORKSPACE/cpa-server" ./cmd/server
