@@ -1,0 +1,6 @@
+id=cpa_gateway
+name=CPA AI Gateway (mobile)
+version=v1.0.0
+versionCode=1
+author=you
+description=CLIProxyAPI 轻量聚合网关 + 移动端管理面板，开机自启监听 127.0.0.1:8317

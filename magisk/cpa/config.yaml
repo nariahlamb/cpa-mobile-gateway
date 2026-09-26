@@ -1,0 +1,20 @@
+# CPA 网关配置（自用最小示例）
+# auth-dir 用模块内绝对路径，避免 boot 环境无 HOME 时 ~ 解析到只读根分区
+auth-dir: "/data/adb/modules/cpa_gateway/cpa/auth"
+host: "127.0.0.1"          # 仅本机可访问，切勿改 0.0.0.0 暴露公网
+port: 8317
+remote-management:
+  secret-key: "CHANGE_ME_请改成你的强密钥"
+  disable-auto-update-panel: true   # 保留内置移动面板，不被官方面板覆盖
+routing:
+  strategy: "round-robin"   # 轮询；可改 weighted-round-robin / fill-first
+request-retry: 2            # 失败自动重试轮数（失败切换恒开）
+api-keys:
+  - "sk-local-换成你的对外访问key"
+openai-compatibility:
+  - name: "example"
+    base-url: "https://your-upstream/v1"
+    api-key-entries:
+      - api-key: "sk-上游key1"
+      - api-key: "sk-上游key2"   # 多个自动轮询
+    models: []                    # 由移动面板拉取+归类后自动写入

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>CPA 聚合网关 · 移动面板</title>
+<style>
+:root{
+  --bg:#0e1116; --bg2:#161b22; --card:#1c232d; --card2:#232c38;
+  --line:#2d3745; --txt:#e6edf3; --sub:#8b98a5; --mut:#5c6b7a;
+  --acc:#3d8bfd; --acc2:#1f6feb; --ok:#3fb950; --warn:#d29922; --err:#f85149;
+  --rad:14px; --tap:44px; --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:15px;line-height:1.5;overscroll-behavior:none}
+a{color:var(--acc);text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:15px}
+.topbar{position:sticky;top:0;z-index:20;background:rgba(14,17,22,.92);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;display:flex;align-items:center;gap:10px}
+.topbar h1{font-size:16px;margin:0;font-weight:600;flex:1;letter-spacing:.3px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:none}
+.dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.dot.off{background:var(--err)}
+.topbar .mini{font-size:12px;color:var(--sub)}
+.page{display:none;padding:14px 14px calc(84px + var(--safe-b));max-width:720px;margin:0 auto}
+.page.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--rad);padding:14px;margin-bottom:12px}
+.card h2{font-size:14px;margin:0 0 10px;color:var(--txt);font-weight:600;display:flex;align-items:center;gap:8px}
+.card h2 .tag{font-size:11px;color:var(--sub);font-weight:400;margin-left:auto}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.row:last-child{margin-bottom:0}
+label.fld{display:block;margin-bottom:10px}
+label.fld span{display:block;font-size:12px;color:var(--sub);margin-bottom:4px}
+input[type=text],input[type=password],input[type=number],select,textarea{
+  width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+  color:var(--txt);padding:11px 12px;min-height:var(--tap);outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--acc)}
+textarea{min-height:80px;resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.btn{background:var(--acc2);color:#fff;border:none;border-radius:10px;padding:11px 16px;min-height:var(--tap);
+  font-size:14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn:active{transform:scale(.97)}
+.btn.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+.btn.ok{background:var(--ok)}.btn.warn{background:var(--warn);color:#1a1200}.btn.err{background:var(--err)}
+.btn.sm{padding:7px 12px;min-height:36px;font-size:13px}
+.btn.full{width:100%}.btn:disabled{opacity:.45}
+.btn-grid{display:flex;gap:8px;flex-wrap:wrap}
+.btn-grid .btn{flex:1;min-width:120px}
+.switch{position:relative;width:46px;height:27px;flex:none}
+.switch input{opacity:0;width:0;height:0;position:absolute}
+.switch .sl{position:absolute;inset:0;background:var(--mut);border-radius:20px;transition:.2s}
+.switch .sl:before{content:"";position:absolute;width:21px;height:21px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.switch input:checked + .sl{background:var(--acc)}
+.switch input:checked + .sl:before{transform:translateX(19px)}
+.toggle-line{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.toggle-line:last-child{border-bottom:none}
+.toggle-line .tl-txt{flex:1}
+.toggle-line .tl-txt b{font-size:14px;font-weight:600}
+.toggle-line .tl-txt small{display:block;color:var(--sub);font-size:12px}
+.item{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+.item .hd{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.item .hd b{font-size:15px}
+.item .hd .u{font-size:12px;color:var(--sub);word-break:break-all;flex:1}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--bg2);color:var(--sub);border:1px solid var(--line)}
+.badge.on{color:var(--ok);border-color:var(--ok)}.badge.off{color:var(--err);border-color:var(--err)}
+.badge.chat{color:#58a6ff;border-color:#2b5a9e}.badge.resp{color:#bc8cff;border-color:#6b4a9e}.badge.anth{color:#f0883e;border-color:#9e5a2b}
+.meta{font-size:12px;color:var(--sub);display:flex;gap:12px;flex-wrap:wrap;margin-top:4px}
+.mdl{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.mdl:last-child{border-bottom:none}
+.mdl input[type=checkbox]{width:20px;height:20px;flex:none;accent-color:var(--acc)}
+.mdl .mn{flex:1;min-width:0}
+.mdl .mn b{font-size:14px;display:block;word-break:break-all}
+.mdl .mn small{font-size:11px;color:var(--sub);word-break:break-all}
+.spd{font-size:12px;font-weight:600;flex:none;min-width:54px;text-align:right}
+.spd.g{color:var(--ok)}.spd.y{color:var(--warn)}.spd.r{color:var(--err)}
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(22,27,34,.96);
+  backdrop-filter:blur(12px);border-top:1px solid var(--line);display:flex;padding-bottom:var(--safe-b)}
+.nav button{flex:1;background:none;border:none;color:var(--mut);padding:8px 0 10px;font-size:11px;
+  display:flex;flex-direction:column;align-items:center;gap:3px}
+.nav button.active{color:var(--acc)}
+.nav button svg{width:22px;height:22px}
+#toast{position:fixed;left:50%;bottom:calc(96px + var(--safe-b));transform:translateX(-50%);
+  background:#000d;color:#fff;padding:10px 18px;border-radius:24px;font-size:13px;z-index:100;
+  opacity:0;transition:.25s;pointer-events:none;max-width:90vw;text-align:center;border:1px solid var(--line)}
+#toast.show{opacity:1}
+.sheet{position:fixed;inset:0;z-index:50;background:#0009;display:none;align-items:flex-end}
+.sheet.show{display:flex}
+.sheet .inner{background:var(--bg2);width:100%;max-width:720px;margin:0 auto;border-radius:18px 18px 0 0;
+  padding:16px 16px calc(20px + var(--safe-b));max-height:90vh;overflow-y:auto;border-top:1px solid var(--line)}
+.sheet .grab{width:40px;height:4px;background:var(--mut);border-radius:4px;margin:0 auto 14px}
+.sheet h3{margin:0 0 14px;font-size:16px}
+.empty{text-align:center;color:var(--mut);padding:30px 10px;font-size:13px}
+.hint{font-size:12px;color:var(--sub);margin:6px 0}
+.kv{display:flex;gap:8px;margin-bottom:6px}
+.kv input:first-child{flex:1}
+.kv input.w{width:70px;flex:none}
+.split{display:flex;gap:8px}.split>*{flex:1}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #fff5;border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+code{background:var(--bg2);padding:1px 5px;border-radius:5px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="dot" id="statusDot"></span>
+  <h1>CPA 网关</h1>
+  <span class="mini" id="statusTxt">未连接</span>
+</div>
+<div class="page active" id="page-sites">
+  <div class="card">
+    <h2>上游站点 <span class="tag" id="siteCount">0 个</span></h2>
+    <div id="siteList"><div class="empty">未连接或暂无站点</div></div>
+    <button class="btn full" onclick="openSiteSheet(-1)">+ 新增站点</button>
+  </div>
+</div>
+<div class="page" id="page-models">
+  <div class="card">
+    <h2>模型管理 <span class="tag" id="mdlSiteName">选择站点</span></h2>
+    <select id="mdlSiteSel" onchange="onMdlSiteChange()"></select>
+    <div class="btn-grid" style="margin-top:10px">
+      <button class="btn sec sm" onclick="fetchUpstreamModels()">拉取上游模型</button>
+      <button class="btn sec sm" onclick="speedTestSelected()">批量测速</button>
+    </div>
+    <div class="btn-grid" style="margin-top:8px">
+      <button class="btn ok sm" onclick="classifyAndApply()">正则归类并应用</button>
+      <button class="btn err sm" onclick="deleteSelected()">删除选中</button>
+    </div>
+    <div class="hint" id="mdlHint"></div>
+  </div>
+  <div class="card">
+    <h2>模型列表 <span class="tag"><label style="display:flex;align-items:center;gap:5px;font-weight:400"><input type="checkbox" id="selAll" onchange="toggleSelAll()" style="width:18px;height:18px;accent-color:var(--acc)">全选</label></span></h2>
+    <div id="mdlList"><div class="empty">先拉取或选择站点</div></div>
+    <button class="btn sec full sm" onclick="openCustomModelSheet()">+ 手动添加自定义模型</button>
+  </div>
+</div>
+<div class="page" id="page-rules">
+  <div class="card">
+    <h2>归类规则 <span class="tag">axonhub 式</span></h2>
+    <p class="hint">按顺序匹配：第一个命中的正则决定别名。别名支持 <code>$1</code> 捕获组引用。留空别名则保持原名。规则存本地浏览器。</p>
+    <div id="ruleList"></div>
+    <button class="btn full sm" onclick="openRuleSheet(-1)">+ 新增规则</button>
+    <div class="btn-grid" style="margin-top:10px">
+      <button class="btn sec sm" onclick="loadPresetRules()">载入预设</button>
+      <button class="btn sec sm" onclick="exportRules()">导出</button>
+      <button class="btn sec sm" onclick="importRules()">导入</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>归类预览</h2>
+    <label class="fld"><span>测试模型名（每行一个）</span>
+      <textarea id="ruleTest" placeholder="gpt-4o-2024-08-06&#10;claude-3-5-sonnet-20241022&#10;deepseek-chat"></textarea></label>
+    <button class="btn sec full sm" onclick="previewRules()">预览归类结果</button>
+    <div id="rulePreview" style="margin-top:10px"></div>
+  </div>
+</div>
+<div class="page" id="page-settings">
+  <div class="card">
+    <h2>连接</h2>
+    <label class="fld"><span>网关地址</span><input type="text" id="cfgBase" placeholder="http://127.0.0.1:8317"></label>
+    <label class="fld"><span>管理密钥 (secret-key)</span><input type="password" id="cfgKey" placeholder="remote-management.secret-key"></label>
+    <button class="btn full" onclick="connect()">连接 / 保存</button>
+    <div class="hint" id="connHint"></div>
+  </div>
+  <div class="card">
+    <h2>轮询与调度 <span class="tag">全局</span></h2>
+    <label class="fld"><span>负载均衡策略 (routing.strategy)</span>
+      <select id="cfgStrategy" onchange="saveStrategy()">
+        <option value="round-robin">轮询 round-robin（默认）</option>
+        <option value="weighted-round-robin">加权轮询 weighted-round-robin</option>
+        <option value="fill-first">填充优先 fill-first</option>
+      </select></label>
+    <div class="toggle-line">
+      <div class="tl-txt"><b>失败自动切换</b><small>某 key 报错自动切其他 key（CPA 恒开）</small></div>
+      <label class="switch"><input type="checkbox" checked disabled><span class="sl"></span></label>
+    </div>
+    <label class="fld" style="margin-top:10px"><span>请求重试轮数 (request-retry)</span>
+      <input type="number" id="cfgRetry" min="0" max="10" onchange="saveRetry()"></label>
+  </div>
+  <div class="card">
+    <h2>关于</h2>
+    <p class="hint">纯前端面板，全部走 CPA Management API。轮询、失败切换、模型归类映射到 CPA 原生配置。</p>
+    <div class="toggle-line"><div class="tl-txt"><b>记住连接信息</b><small>存本地浏览器，公用设备勿开</small></div>
+      <label class="switch"><input type="checkbox" id="cfgRemember"><span class="sl"></span></label></div>
+  </div>
+</div>
+<div class="nav">
+  <button class="active" data-page="sites" onclick="nav('sites')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/></svg>站点</button>
+  <button data-page="models" onclick="nav('models')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>模型</button>
+  <button data-page="rules" onclick="nav('rules')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg>归类</button>
+  <button data-page="settings" onclick="nav('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>设置</button>
+</div>
+<div class="sheet" id="sheet"><div class="inner"><div class="grab"></div><div id="sheetBody"></div></div></div>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

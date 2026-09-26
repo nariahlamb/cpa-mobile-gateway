@@ -1,0 +1,101 @@
+name: build-android-arm64
+
+on:
+  workflow_dispatch:
+    inputs:
+      cpa_ref:
+        description: "CLIProxyAPI 源码 ref（分支/tag/commit）"
+        required: false
+        default: "ed980be34b9981735eaa16941956b1e8d9abfb7c"
+  push:
+    paths:
+      - ".github/workflows/build.yml"
+      - "panel/**"
+      - "magisk/**"
+      - "scripts/**"
+
+permissions:
+  contents: write
+
+env:
+  CPA_REPO: "https://github.com/router-for-me/CLIProxyAPI.git"
+  CPA_REF: "ed980be34b9981735eaa16941956b1e8d9abfb7c"
+  ANDROID_API: "24"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout panel repo
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          check-latest: true
+
+      - name: Setup Android NDK
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          local-cache: true
+
+      - name: Clone CLIProxyAPI
+        run: |
+          REF="${{ github.event.inputs.cpa_ref || env.CPA_REF }}"
+          git clone "$CPA_REPO" cpa-src
+          cd cpa-src
+          git checkout "$REF"
+          echo "CPA source at $(git rev-parse HEAD)"
+          go env -w GOTOOLCHAIN=auto
+
+      - name: Build android/arm64 (CGO + NDK, bionic DNS)
+        working-directory: cpa-src
+        run: |
+          TOOLCHAIN="${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64"
+          export CC="$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang"
+          export CXX="$TOOLCHAIN/bin/aarch64-linux-android${ANDROID_API}-clang++"
+          echo "CC=$CC"; "$CC" --version | head -1
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
+            go build -trimpath -tags "netcgo" -ldflags "-s -w" \
+            -o "$GITHUB_WORKSPACE/cpa-server" ./cmd/server
+          file "$GITHUB_WORKSPACE/cpa-server"
+
+      - name: Verify binary
+        run: |
+          file cpa-server
+          readelf -d cpa-server | grep -E "NEEDED|Shared library" || true
+
+      - name: Assemble Magisk module
+        run: |
+          set -e
+          MOD=magisk-build
+          cp -r magisk "$MOD"
+          VER="v1.1.$GITHUB_RUN_NUMBER"
+          sed -i "s/^version=.*/version=$VER/" "$MOD/module.prop"
+          sed -i "s/^versionCode=.*/versionCode=$GITHUB_RUN_NUMBER/" "$MOD/module.prop"
+          install -m 0755 cpa-server "$MOD/cpa/cpa-server"
+          python3 scripts/inline_panel.py panel/management.html panel/app.js "$MOD/cpa/static/management.html"
+          cd "$MOD"
+          zip -r -X "$GITHUB_WORKSPACE/cpa_gateway_${VER}.zip" . -x ".*" >/dev/null
+          cd "$GITHUB_WORKSPACE"
+          ls -la cpa_gateway_*.zip
+          sha256sum cpa_gateway_*.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpa-magisk-module
+          path: cpa_gateway_*.zip
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: CPA Gateway build ${{ github.run_number }}
+          files: cpa_gateway_*.zip
+          body: |
+            android/arm64 CGO 构建（NDK r26d, API 24），net 走 bionic resolver，DNS 与系统一致。
+            CPA 源码 ref: ${{ github.event.inputs.cpa_ref || env.CPA_REF }}
