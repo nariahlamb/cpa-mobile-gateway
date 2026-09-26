@@ -61,7 +61,7 @@ jobs:
           echo "NDK=$NDK"; echo "CC=$CC"; ls -l "$TOOLCHAIN/bin/clang" || true
           "$CC" --version | head -1
           CGO_ENABLED=1 GOOS=android GOARCH=arm64 \
-            go build -trimpath -tags "netcgo" -ldflags "-s -w" \
+            go build -trimpath -tags "netcgo" -ldflags "-s -w -checklinkname=0" \
             -o "$GITHUB_WORKSPACE/cpa-server" ./cmd/server
           file "$GITHUB_WORKSPACE/cpa-server"
 
