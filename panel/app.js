@@ -9,6 +9,49 @@ let MODELS = [];         // 当前站点模型 [{name,alias,_up?,_speed?,_checke
 let RULES = [];          // 归类规则 [{name,pattern,alias,flags}]
 
 /* ---------- 工具 ---------- */
+/* 网关模型分组缓存：alias/name -> groups（来自 /v1/models 注入的 ModelInfo.Groups） */
+let MODEL_GROUPS = {};
+async function refreshModelGroups(){
+  try{
+    const d = await mgmtModels();
+    MODEL_GROUPS = {};
+    const list = (d && d.data) || [];
+    list.forEach(m => {
+      const g = m.groups || (m.type ? [m.type] : []);
+      if (m.id) MODEL_GROUPS[m.id] = g;
+      if (m.display_name && !MODEL_GROUPS[m.display_name]) MODEL_GROUPS[m.display_name] = g;
+    });
+  } catch (e) { MODEL_GROUPS = {}; }
+}
+/* 拉网关 /v1/models（与 management 同源，路径不同，单独实现） */
+async function mgmtModels(){
+  if (!API.base) throw new Error('未配置网关地址');
+  const url = API.base.replace(/\/+$/, '') + '/v1/models';
+  const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + API.key } });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+/* 分组 -> 徽标样式与文案 */
+const GROUP_META = {
+  // 家族（上游分组）
+  'claude':['anth','Claude'],'gemini':['resp','Gemini'],'gemma':['resp','Gemma'],
+  'openai':['chat','OpenAI'],'deepseek':['chat','DeepSeek'],'qwen':['chat','Qwen'],
+  'glm':['chat','GLM'],'kimi':['chat','Kimi'],'minimax':['chat','MiniMax'],
+  'hunyuan':['chat','混元'],'doubao':['chat','豆包'],'grok':['chat','Grok'],'mistral':['chat','Mistral'],
+  'openai-compatibility':['chat','Chat'],'openai-image':['resp','图像'],'image':['resp','图像'],
+  // 能力
+  'tools':['chat','工具'],'thinking':['resp','思考'],'web-search':['chat','联网'],'vision':['resp','视觉'],
+  // API 模式
+  'chat':['chat','chat'],'responses':['resp','responses'],'anthropic':['anth','anthropic'],'gemini-api':['resp','gemini-api']
+};
+function groupBadges(groups){
+  if(!groups||!groups.length) return '';
+  return groups.map(g=>{
+    const m=GROUP_META[g]||['chat',g];
+    return '<span class="badge '+m[0]+'" style="margin-right:4px">'+esc(m[1])+'</span>';
+  }).join('');
+}
+
 function $(id){return document.getElementById(id)}
 function toast(msg,ms=2000){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),ms)}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
@@ -61,6 +104,7 @@ async function connect(){
   try{
     await loadSites();
     await loadGlobalSettings();
+    refreshModelGroups().then(()=>{ renderSites(); renderModels(); });
     setStatus(true,'已连接 · '+SITES.length+' 站点');
     $('connHint').textContent='连接成功，站点 '+SITES.length+' 个';
     toast('连接成功');
@@ -79,12 +123,49 @@ async function loadSites(){
   renderSites(); renderMdlSiteSel();
 }
 function detectExit(site){
-  // 依据 base-url 猜测出口类型标签（仅展示，实际能力以测速为准）
+  // 优先用探测到的 endpoint-capabilities（实测）；否则回退 base-url 猜测。
+  const probed = site['endpoint-capabilities'];
+  if(Array.isArray(probed) && probed.length){
+    const t=[];
+    if(probed.includes('chat')) t.push('chat');
+    if(probed.includes('responses')) t.push('resp');
+    if(probed.includes('anthropic')||probed.includes('messages')) t.push('anth');
+    return t;
+  }
   const u=(site['base-url']||'').toLowerCase(); const t=[];
   t.push('chat');                              // openai-compatibility 一定走 chat/completions
   if(/anthropic|claude/.test(u)) t.push('anth');
   if(/openai|azure|responses/.test(u)) t.push('resp');
   return t;
+}
+
+/* 实测站点支持的 API 方言：依次试 chat/responses/anthropic，把通过的写回
+   endpoint-capabilities。模型分组与站点徽标据此标注，未探测时按未知处理。 */
+async function probeSiteCaps(i){
+  const s=SITES[i]; if(!s) return;
+  const model=(s.models&&s.models[0]&&(s.models[0].name||s.models[0].alias))||'';
+  if(!model){ toast('该站点暂无模型，先拉取'); return }
+  toast('探测中：'+s.name+' …',2500);
+  const caps=[];
+  const tryCall = async(sub, payload, extraHdr)=>{
+    try{
+      const body={ method:'POST', url:(s['base-url']||'').replace(/\/+$/,'')+sub,
+        header:Object.assign({'Authorization':'Bearer '+((s['api-key-entries']||[])[0]||{})['api-key']||'','Content-Type':'application/json'}, extraHdr||{}),
+        data: JSON.stringify(payload) };
+      const r = await mgmt('/api-call','POST',body);
+      // 200-499 之间都算"端点存在且可路由"；404/405/501 视为不支持该方言
+      return !(r.status_code===404||r.status_code===405||r.status_code===501||r.status_code===0||r.status_code==null);
+    }catch(e){ return false }
+  };
+  if(await tryCall('/chat/completions',{model,max_tokens:1,messages:[{role:'user',content:'hi'}]})) caps.push('chat');
+  if(await tryCall('/responses',{model,input:'hi',max_output_tokens:16})) caps.push('responses');
+  if(await tryCall('/messages',{model,max_tokens:1,messages:[{role:'user',content:'hi'}]},{'anthropic-version':'2023-06-01'})) caps.push('anthropic');
+  try{
+    await mgmt('/openai-compatibility','PATCH',{index:i,value:{'endpoint-capabilities':caps}});
+    SITES[i]['endpoint-capabilities']=caps;
+    renderSites();
+    toast('探测完成：'+(caps.length?caps.join(' + '):'均不可用'));
+  }catch(e){ toast('写回失败：'+e.message,3000) }
 }
 function renderSites(){
   $('siteCount').textContent = SITES.length+' 个';
@@ -102,6 +183,7 @@ function renderSites(){
       <div style="margin:6px 0">${exits}</div>
       <div class="meta"><span>🔑 ${keys} key</span><span>📦 ${mdls} 模型</span>${s.prefix?`<span>前缀 ${esc(s.prefix)}</span>`:''}</div>
       <div class="btn-grid" style="margin-top:10px">
+        <button class="btn sec sm" onclick="probeSiteCaps(${i})">探测</button>
         <button class="btn sec sm" onclick="openSiteSheet(${i})">编辑</button>
         <button class="btn sec sm" onclick="gotoModels(${i})">模型</button>
         <button class="btn ${on?'warn':'ok'} sm" onclick="toggleSite(${i})">${on?'禁用':'启用'}</button>
@@ -164,6 +246,142 @@ async function saveSite(i){
   }catch(e){ toast('保存失败：'+e.message,3000) }
 }
 
+/* ---------- OAuth 登录 ---------- */
+const OAUTH_PROVIDERS = [
+  { id: 'antigravity', label: 'Antigravity', url: '/antigravity-auth-url' },
+  { id: 'anthropic', label: 'Claude', url: '/anthropic-auth-url' },
+  { id: 'codex', label: 'Codex', url: '/codex-auth-url' },
+  { id: 'kimi', label: 'Kimi', url: '/kimi-auth-url' },
+  { id: 'devin', label: 'Devin', url: '/devin-auth-url' },
+  { id: 'meta', label: 'Meta (Llama)', url: '/meta-auth-url' }
+];
+let AUTH_FLOW = null; // { provider, state, _beforeCount }
+
+function renderProviders() {
+  const box = document.getElementById('providerList');
+  if (!box) return;
+  box.innerHTML = OAUTH_PROVIDERS.map(p =>
+    '<div class="item"><div class="hd"><b>' + esc(p.label) + '</b></div>' +
+    '<div class="btn-grid" style="margin-top:8px"><button class="btn ok sm" onclick="startOAuth(\'' + p.id + '\')">登录 ' + esc(p.label) + '</button></div></div>'
+  ).join('');
+}
+
+async function loadAuthFiles() {
+  const box = document.getElementById('authList');
+  if (!box) return;
+  try {
+    const d = await mgmt('/auth-files');
+    const files = (d && d.files) || [];
+    document.getElementById('authCount').textContent = files.length + ' 个凭证';
+    if (!files.length) { box.innerHTML = '<div class="empty">暂无 OAuth 凭证，在下方登录</div>'; return; }
+    box.innerHTML = files.map(f => {
+      const name = f.name || f.id || '(凭证)';
+      const provider = f.provider || f.type || '';
+      const label = f.label || f.email || '';
+      return '<div class="item"><div class="hd"><b>' + esc(name) + '</b>' +
+        (provider ? '<span class="badge resp">' + esc(provider) + '</span>' : '') + '</div>' +
+        (label ? '<div class="meta"><span>' + esc(label) + '</span></div>' : '') + '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = '<div class="empty">读取失败：' + esc(e.message) + '</div>';
+  }
+}
+
+async function startOAuth(pid) {
+  const p = OAUTH_PROVIDERS.find(x => x.id === pid);
+  if (!p) return;
+  if (AUTH_FLOW) { toast('已有进行中的登录，先完成或取消'); return; }
+  setAuthStatus('正在请求授权链接…', '');
+  try {
+    let bc = 0;
+    try { const bf = await mgmt('/auth-files'); bc = ((bf && bf.files) || []).length; } catch (e) {}
+    const d = await mgmt(p.url, 'GET');
+    if (!d || !d.url) { setAuthStatus('返回异常：' + JSON.stringify(d).slice(0, 120), 'err'); return; }
+    AUTH_FLOW = { provider: pid, state: d.state || '', _beforeCount: bc };
+    document.getElementById('authUrl').value = d.url;
+    document.getElementById('authFlow').style.display = 'block';
+    // 立即尝试在新标签打开授权页（手机浏览器可能拦截，故同时保留输入框+复制按钮兜底）
+    let opened = false;
+    try { const w = window.open(d.url, '_blank'); opened = !!w; } catch (e) {}
+    setAuthStatus(opened
+      ? '已在新标签打开授权页，完成授权后把地址栏的回调地址粘贴到下方提交。'
+      : '浏览器拦截了弹窗，请点「复制」手动在浏览器打开授权链接，完成后粘贴回调地址提交。', '');
+    waitAuthCompletion();
+  } catch (e) {
+    setAuthStatus('请求失败：' + e.message, 'err');
+    AUTH_FLOW = null;
+  }
+}
+
+async function waitAuthCompletion() {
+  const before = (AUTH_FLOW && AUTH_FLOW._beforeCount) || 0;
+  for (let i = 0; i < 150; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    if (!AUTH_FLOW) return;
+    try {
+      const d = await mgmt('/auth-files');
+      const files = (d && d.files) || [];
+      if (files.length > before) {
+        setAuthStatus('登录成功，凭证已保存。模型会自动出现在出口。', 'ok');
+        toast('登录成功');
+        AUTH_FLOW = null;
+        document.getElementById('authFlow').style.display = 'none';
+        loadAuthFiles();
+        refreshModelGroups();
+        return;
+      }
+    } catch (e) { /* 继续等 */ }
+  }
+  if (AUTH_FLOW) setAuthStatus('等待回调超时，请重试。', 'err');
+}
+
+async function submitAuthCallback() {
+  if (!AUTH_FLOW) { toast('无进行中的登录'); return; }
+  const raw = document.getElementById('authCallback').value.trim();
+  if (!raw) { toast('请粘贴回调地址'); return; }
+  let code = '', state = AUTH_FLOW.state;
+  try {
+    const u = new URL(raw);
+    code = u.searchParams.get('code') || '';
+    state = u.searchParams.get('state') || state;
+  } catch (e) {}
+  if (!code) { const m = raw.match(/[?#&]code=([^&]+)/); if (m) code = decodeURIComponent(m[1]); }
+  const stm = raw.match(/[?#&]state=([^&]+)/); if (stm) state = decodeURIComponent(stm[1]);
+  if (!code) { toast('未解析到 code 参数'); return; }
+  setAuthStatus('提交回调中…', '');
+  try {
+    await mgmt('/oauth-callback', 'POST', { provider: AUTH_FLOW.provider, code: code, state: state, redirect_url: raw });
+    setAuthStatus('回调已提交，等待凭证落盘…', '');
+  } catch (e) {
+    setAuthStatus('提交失败：' + e.message, 'err');
+  }
+}
+
+function cancelAuthFlow() {
+  AUTH_FLOW = null;
+  document.getElementById('authFlow').style.display = 'none';
+  document.getElementById('authCallback').value = '';
+  setAuthStatus('', '');
+}
+
+function copyAuthUrl() {
+  const v = document.getElementById('authUrl').value;
+  if (!v) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(v).then(() => toast('已复制授权链接'));
+  } else {
+    document.getElementById('authUrl').select();
+    try { document.execCommand('copy'); toast('已复制'); } catch (e) { toast('请手动复制'); }
+  }
+}
+
+function setAuthStatus(msg, kind) {
+  const el = document.getElementById('authStatus');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = kind === 'err' ? 'var(--err)' : kind === 'ok' ? 'var(--ok)' : 'var(--sub)';
+}
+
 /* ---------- 模型页 ---------- */
 function renderMdlSiteSel(){
   const sel=$('mdlSiteSel');
@@ -181,6 +399,7 @@ function onMdlSiteChange(skipReload){
   $('mdlSiteName').textContent = s.name||'';
   MODELS = (s.models||[]).map(m=>({name:m.name,alias:m.alias||m.name,['display-name']:m['display-name'],_checked:false,_up:true}));
   renderModels();
+  refreshModelGroups().then(()=>renderModels());
   $('mdlHint').textContent = MODELS.length? ('已配置 '+MODELS.length+' 个模型') : '该站点暂无模型，点上方拉取';
 }
 function renderModels(){
@@ -191,7 +410,7 @@ function renderModels(){
     const aliasDiff = m.alias&&m.alias!==m.name;
     return `<div class="mdl">
       <input type="checkbox" ${m._checked?'checked':''} onchange="MODELS[${i}]._checked=this.checked;syncSelAll()">
-      <div class="mn"><b>${esc(m.alias||m.name)}</b>${aliasDiff?`<small>← ${esc(m.name)}</small>`:''}${!m._up?'<small style="color:var(--warn)">自定义/未验证</small>':''}</div>
+      <div class="mn"><b>${esc(m.alias||m.name)}</b>${aliasDiff?`<small>← ${esc(m.name)}</small>`:''}${!m._up?'<small style="color:var(--warn)">自定义/未验证</small>':''}<div style="margin-top:3px">${groupBadges(MODEL_GROUPS[m.alias]||MODEL_GROUPS[m.name])}</div></div>
       ${spd}
       <button class="btn sec sm" onclick="editModel(${i})" style="min-width:auto;padding:6px 10px">✎</button>
     </div>`;
@@ -400,6 +619,7 @@ function nav(page){
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.page===page));
   if(page==='rules') renderRules();
   if(page==='models') renderMdlSiteSel();
+  if(page==='auth'){ renderProviders(); loadAuthFiles(); }
 }
 function showSheet(){ $('sheet').classList.add('show') }
 function closeSheet(){ $('sheet').classList.remove('show') }

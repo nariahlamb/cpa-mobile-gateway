@@ -156,6 +156,30 @@ code{background:var(--bg2);padding:1px 5px;border-radius:5px;font-size:12px}
     <div id="rulePreview" style="margin-top:10px"></div>
   </div>
 </div>
+<div class="page" id="page-auth">
+  <div class="card">
+    <h2>OAuth 登录 <span class="tag" id="authCount">0 个凭证</span></h2>
+    <p class="hint">点「登录」后复制授权链接到浏览器完成授权；回调地址粘贴回来（或留空自动）。成功后凭证自动落盘，对应模型自动出现在出口。</p>
+    <div id="authList"><div class="empty">加载中…</div></div>
+  </div>
+  <div class="card">
+    <h2>新增登录</h2>
+    <div id="providerList"></div>
+    <div id="authFlow" style="display:none;margin-top:12px">
+      <div class="fld"><span>1. 打开授权链接</span>
+        <div style="display:flex;gap:8px"><input type="text" id="authUrl" readonly style="flex:1"><button class="btn sec sm" onclick="copyAuthUrl()">复制</button></div>
+      </div>
+      <div class="fld" style="margin-top:10px"><span>2. 授权后粘贴完整回调地址 (http://localhost…code=…&state=…)</span>
+        <input type="text" id="authCallback" placeholder="粘贴回调地址，部分提供者可留空自动">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn ok sm" id="authSubmit" onclick="submitAuthCallback()">提交并完成登录</button>
+        <button class="btn sec sm" onclick="cancelAuthFlow()">取消</button>
+      </div>
+      <div class="hint" id="authStatus" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
 <div class="page" id="page-settings">
   <div class="card">
     <h2>连接</h2>
@@ -193,6 +217,8 @@ code{background:var(--bg2);padding:1px 5px;border-radius:5px;font-size:12px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>模型</button>
   <button data-page="rules" onclick="nav('rules')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h7"/></svg>归类</button>
+  <button data-page="auth" onclick="nav('auth')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>登录</button>
   <button data-page="settings" onclick="nav('settings')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>设置</button>
 </div>
