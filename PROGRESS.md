@@ -53,3 +53,17 @@
   写入会把 config 迁移到 v8 分组布局（server.*/oauth.*/upstream.*），凭证与配置可读但格式变化。
 - v8 增益：auth 自动刷新改用 CLOCK_MONOTONIC，修复 Android suspend 下 token 刷新停摆；
   codex 新增 plan_type 透传；新增 devin/meta 供应商。
+
+## 5. 第三方 Anthropic 中继被 CF 拦截根因 + 修复（分支 feat/cooldown-and-claude-utls）
+- **现象**: justwoker(claude 适配器) 配成 openai-compatibility 后 claude-opus-4-8 走 anthropic/chat 全 403，模型被 CPA 冷却 5 分钟从出口消失。
+- **根因（双重）**: (a) CPA `fallbackRoundTripper` 仅对硬编码 `api.anthropic.com` 用 claude uTLS 指纹(复刻 Claude Code Node/OpenSSL JA3)，第三方中继回落到 Go 原生 TLS，被 Cloudflare 按 JA3 指纹 403；(b) 非 claude-cli 的 User-Agent 也被 CF 拦。
+- **修复**: 新增 `claude_upstream_hosts.go` 注册 claude-api-key 自定义 base-url 的 host，`IsClaudeCompatUpstreamURL` 让它们也走 uTLS；claude_executor 非 anthropic-base 强制 claude-cli UA。
+- **正确接入方式**: 第三方 claude 适配器应配 `claude-api-key`（base-url+headers+models），不是 openai-compatibility。justwoker 已改配 claude-api-key（prefix jw），实测 `jw/claude-opus-4-8` anthropic/chat 均 200（连测非偶发），并已删掉 openai-compat 里的失效项。
+
+## 6. 冷却可视可控（同分支）
+- 新增 `GET /v0/management/cooldowns`（列出 quota-exceeded/suspended 冷却）与 `POST /v0/management/cooldowns/clear`（按 client/model/all 清除），registry 增加 CooldownSnapshot/ClearAllCooldowns/ClearClientCooldowns。冷却不再黑盒等 5 分钟。
+
+## 备忘
+- agy 站 `假流式/`、`抗截断/` 前缀是上游 gcli2api 的流式/抗截断变体命名，非乱码。
+- anthropic 模式 `/v1/models` 对非 claude 模型做 Cloaking（id 反转+claude-fable-5-dd- 前缀），路由时还原，是上游故意设计。
+- devin 站 `claude-fable-*` 系列多为占位/无额度（403 insufficient_quota）。
