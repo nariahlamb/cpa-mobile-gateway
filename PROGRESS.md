@@ -43,3 +43,13 @@
 - 模块路径 `/data/adb/modules/cpa_gateway/`，仅监听 127.0.0.1:8317，service.sh late_start 自启。
 - 面板 `static/management.html`（dist 单文件），config 设 `disable-auto-update-panel: true` 防官方面板覆盖。
 - 当前运行二进制 = GOOS=android 重编版（含分组+能力补丁），旧 linux 版备份 `cpa-server.bak-linux`。
+
+## v8 合并版（已编译验证）
+- 分支 `feat/model-groups-v8`（基于上游 v8.0.9 + cherry-pick 分组补丁，无冲突），已推 fork。
+- 二进制 `cpa-server-v8` 已放模块目录备用。实测（8319 端口，用现有 config/auth-dir）：
+  启动成功、管理 API 兼容、endpoint-capabilities 读回正确、/v1/models 分组保留
+  （cn:deepseek=chat+responses、gcli=仅 chat）、chat 转发 200、OAuth 端点正常、无错误日志。
+- 切换 v8：备份 config.yaml 后 `mv cpa-server-v8 cpa-server` 重启模块。首次 management
+  写入会把 config 迁移到 v8 分组布局（server.*/oauth.*/upstream.*），凭证与配置可读但格式变化。
+- v8 增益：auth 自动刷新改用 CLOCK_MONOTONIC，修复 Android suspend 下 token 刷新停摆；
+  codex 新增 plan_type 透传；新增 devin/meta 供应商。
